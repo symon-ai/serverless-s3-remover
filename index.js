@@ -1,7 +1,6 @@
 'use strict';
 
 const chalk = require('chalk');
-const prompt = require('prompt');
 const messagePrefix = 'S3 Remover: ';
 
 class Remover {
@@ -96,8 +95,7 @@ class Remover {
       return this.serverless.variables.populateObject(this.serverless.service.custom.remover)
         .then(fileConfig => {
           const defaultConfig = {
-            prompt: false,
-            buckets: [],
+            buckets: []
           };
           return Object.assign({}, defaultConfig, fileConfig);
         });
@@ -105,57 +103,20 @@ class Remover {
 
     return new Promise((resolve) => {
       return populateConfig().then(config => {
-        if (!config.prompt) {
-          let promisses = [];
-          for (const b of config.buckets) {
-            promisses.push(getAllKeys(b).then(executeRemove).then(() => {
-              const message = `Success: ${b} is empty.`;
-              self.log(message);
-              self.serverless.cli.consoleLog(`${messagePrefix}${chalk.yellow(message)}`);
-            }).catch((err) => {
-              const message = `Faild: ${b} may not be empty.`;
-              self.log(message);
-              self.log(err);
-              self.serverless.cli.consoleLog(`${messagePrefix}${chalk.yellow(message)}`);
-            }));
-          }
-          return Promise.all(promisses).then(resolve);
+        let promises = [];
+        for (const b of config.buckets) {
+          promises.push(getAllKeys(b).then(executeRemove).then(() => {
+            const message = `Success: ${b} is empty.`;
+            self.log(message);
+            self.serverless.cli.consoleLog(`${messagePrefix}${chalk.yellow(message)}`);
+          }).catch((err) => {
+            const message = `Failed: ${b} may not be empty.`;
+            self.log(message);
+            self.log(err);
+            self.serverless.cli.consoleLog(`${messagePrefix}${chalk.yellow(message)}`);
+          }));
         }
-        prompt.message = messagePrefix;
-        prompt.delimiter = '';
-        prompt.start();
-        const schema = {properties: {}};
-        config.buckets.forEach((b) => {
-          schema.properties[b] = {
-            message: `Make ${b} empty. Are you sure? [yes/no]:`,
-            validator: /(yes|no)/,
-            required: true,
-            warning: 'Must respond yes or no'
-          };
-        });
-        prompt.get(schema, (err, result) => {
-          let promisses = [];
-          for (const b of config.buckets) {
-            if (result[b].match(/^y/)) {
-              promisses.push(getAllKeys(b).then(executeRemove).then(() => {
-                const message = `Success: ${b} is empty.`;
-                self.log(message);
-                self.serverless.cli.consoleLog(`${messagePrefix}${chalk.yellow(message)}`);
-              }).catch(() => {
-                const message = `Faild: ${b} may not be empty.`;
-                self.log(message);
-                self.serverless.cli.consoleLog(`${messagePrefix}${chalk.yellow(message)}`);
-              }));
-            } else {
-              promisses.push(Promise.resolve().then(() => {
-                const message = `Remove cancelled: ${b}`;
-                self.log(message);
-                self.serverless.cli.consoleLog(`${messagePrefix}${chalk.yellow(message)}`);
-              }));
-            }
-          }
-          Promise.all(promisses).then(resolve);
-        });
+        return Promise.all(promises).then(resolve);
       });
     });
   }
